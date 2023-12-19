@@ -1,112 +1,116 @@
-#include "Astar.h"
+#include "AStar.h"
 
 using namespace std;
 
-const int ROWS = 5;
-const int COLS = 5;
+// 移動可能な方向（上下左右）
+const int AStar::dx[] = { -1, 0, 1, 0 };
+const int AStar::dy[] = { 0, 1, 0, -1 };
 
-vector<vector<int>> obstacleMap = {
-    {0, 0, 0, 0, 0},
-    {0, 1, 1, 0, 0},
-    {0, 0, 0, 0, 1},
-    {0, 1, 1, 1, 0},
-    {0, 0, 0, 0, 0}
-};
-
-const int dx[] = { -1, 1, 0, 0, -1, -1, 1, 1 };
-const int dy[] = { 0, 0, -1, 1, -1, 1, -1, 1 };
-
-AStar::AStar(Point src, Point dest) : src(src), dest(dest) {}
-
-void AStar::findPath() {
-    priority_queue<Node, vector<Node>, function<bool(Node, Node)>> pq(
-        [](Node const& a, Node const& b) {
-            return a.f > b.f;
+// コンストラクタ
+AStar::AStar() {
+    // マップの初期化
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            map[i][j] = clear;
         }
-    );
+    }
 
-    vector<vector<bool>> visited(ROWS, vector<bool>(COLS, false));
+    // srand を呼び出す
+    srand(static_cast<unsigned>(time(0)));
 
-    Node startNode = { src, 0, 0, 0, nullptr };
-    startNode.h = calculateHValue(src.x, src.y, dest);
-    startNode.f = startNode.g + startNode.h;
+    // 障害物の設定
+   /* map[1][1] = obstacle;
+    map[1][3] = obstacle;
+    map[3][1] = obstacle;
+    map[3][3] = obstacle;*/
 
-    pq.push(startNode);
+    // 障害物のランダムな設定
+    setRandomObstacles(10);
+}
 
-    while (!pq.empty()) {
-        Node currentNode = pq.top();
-        pq.pop();
+// A*アルゴリズム
+void AStar::findPath(const Point& start, const Point& goal) {
+    priority_queue<Node, vector<Node>, greater<Node>> openSet;
+    vector<vector<int>> closedSet(rows, vector<int>(cols, 0));
+    vector<vector<Point>> cameFrom(rows, vector<Point>(cols, Point(-1, -1)));
 
-        int x = currentNode.point.x;
-        int y = currentNode.point.y;
+    openSet.push(Node(start, 0, abs(start.x - goal.x) + abs(start.y - goal.y)));
 
-        visited[x][y] = true;
+    while (!openSet.empty()) {
+        Node current = openSet.top();
+        openSet.pop();
 
-        if (isDestination(x, y, dest)) {
-            cout << "経路が見つかりました。" << endl;
-            printPath(&currentNode);
+        if (current.point.x == goal.x && current.point.y == goal.y) {
+            // ゴールに到達したら経路を表示
+            vector<vector<char>> path(rows, vector<char>(cols, ' '));
+            Point pathPoint = goal;
+
+            while (pathPoint.x != -1 && pathPoint.y != -1) {
+                path[pathPoint.x][pathPoint.y] = '*';
+                pathPoint = cameFrom[pathPoint.x][pathPoint.y];
+            }
+
+            // スタート地点とゴール地点の表示
+            path[start.x][start.y] = 'S';
+            path[goal.x][goal.y] = 'G';
+
+            // 経路を出力
+            for (int i = 0; i < rows; ++i) {
+                for (int j = 0; j < cols; ++j) {
+                    cout << path[i][j] << ' ';
+                }
+                cout << endl;
+            }
+
             return;
         }
 
-        for (int i = 0; i < 8; ++i) {
-            int newX = x + dx[i];
-            int newY = y + dy[i];
+        closedSet[current.point.x][current.point.y] = 1;
 
-            if (isValid(newX, newY) && !visited[newX][newY]) {
-                Node neighbor = { {newX, newY}, 0, 0, 0, &currentNode };
-                neighbor.g = currentNode.g + 1;
-                neighbor.h = calculateHValue(newX, newY, dest);
-                neighbor.f = neighbor.g + neighbor.h;
+        for (int i = 0; i < (rows-1); ++i) {
+            int newX = current.point.x + dx[i];
+            int newY = current.point.y + dy[i];
 
-                pq.push(neighbor);
+            if (newX >= 0 && newX < rows && newY >= 0 && newY < cols &&
+                map[newX][newY] == clear && !closedSet[newX][newY]) {
+                int newG = current.g + 1;
+                int newH = abs(newX - goal.x) + abs(newY - goal.y);
+                int newF = newG + newH;
+
+                if (cameFrom[newX][newY].x == -1 || newF < current.f) {
+                    openSet.push(Node(Point(newX, newY), newG, newH));
+                    cameFrom[newX][newY] = current.point;
+                }
             }
         }
     }
 
-    cout << "経路が見つかりませんでした。" << endl;
+    // ゴールに到達できない場合
+    cout << "No path found." << endl;
 }
 
-bool AStar::isValid(int x, int y) const {
-    return x >= 0 && x < ROWS && y >= 0 && y < COLS && obstacleMap[x][y] == 0;
+// ランダムな座標を取得するメソッド
+Point AStar::getRandomPoint() {
+    int randomX = rand() % rows;
+    int randomY = rand() % cols;
+    return Point(randomX, randomY);
 }
 
-bool AStar::isDestination(int x, int y, Point dest) const {
-    return x == dest.x && y == dest.y;
-}
-
-int AStar::calculateHValue(int x, int y, Point dest) const {
-    return abs(x - dest.x) + abs(y - dest.y);
-}
-
-void AStar::printPath(Node* destNode) const {
-    vector<Point> path;
-    Node* current = destNode;
-
-    while (current != nullptr) {
-        path.push_back(current->point);
-        current = current->parent;
+// 障害物をランダムに設定するメソッド
+void AStar::setRandomObstacles(int obstacleCount) {
+    for (int i = 0; i < obstacleCount; ++i) {
+        Point obstaclePoint = getRandomPoint();
+        map[obstaclePoint.x][obstaclePoint.y] = obstacle;
     }
+}
 
-    for (int i = 0; i < ROWS; ++i) {
-        for (int j = 0; j < COLS; ++j) {
-            Point currentPoint = { i, j };
-            if (currentPoint == destNode->point) {
-                cout << "D ";
-            }
-            else if (currentPoint == path.back()) {
-                cout << "S ";
-                path.pop_back();
-            }
-            else if (obstacleMap[i][j] == 1) {
-                cout << "■ ";
-            }
-            else if (find(path.begin(), path.end(), currentPoint) != path.end()) {
-                cout << "□ ";
-            }
-            else {
-                cout << "  ";
-            }
-        }
-        cout << endl;
+void AStar::setGoal(const Point& _goal)
+{
+    // 外部から指定されたゴール座標を設定
+    this->goal = _goal;
+
+    // ゴール地点に障害物がある場合はクリアに変更
+    if (map[this->goal.x][this->goal.y] == obstacle) {
+        map[this->goal.x][this->goal.y] = clear;
     }
 }
